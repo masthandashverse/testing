@@ -7,7 +7,7 @@ const EMPLOYEE_HEADERS = [
   'Manager', 'ManagerEmail',
   'Phone', 'JoinDate',
   'ContractStartDate', 'ContractEndDate', 'ContractTotalDays',
-  'NoticePeriod', 'RenewalNotes',
+  'NoticePeriod', 'RenewalNotes', 'ContractRenewalCount',
   'CurrentProject', 'AddedOn'
 ];
 
@@ -129,6 +129,7 @@ function handleAction(action, data) {
     case 'getBootstrapData':  return getBootstrapData(data);
     case 'addEmployee':       return addEmployee(data);
     case 'updateEmployee':    return updateEmployee(data);
+    case 'renewEmployeeContract': return renewEmployeeContract(data);
     case 'resetEmployeePassword': return resetEmployeePassword(data);
     case 'deleteEmployee':    return deleteEmployee(data.email);
     case 'markAttendance':    return handleMarkAttendance(data);
@@ -177,6 +178,7 @@ function requiresAdminSession(action) {
     deleteHRProfile: true,
     addEmployee: true,
     updateEmployee: true,
+    renewEmployeeContract: true,
     resetEmployeePassword: true,
     deleteEmployee: true,
     addManager: true,
@@ -1225,6 +1227,7 @@ function buildEmployeeObject(row, hdr, options) {
     contractTotalDays: getValueByHeader(row, hdr, 'contracttotaldays', -1),
     noticePeriod: getValueByHeader(row, hdr, 'noticeperiod', -1),
     renewalNotes: getValueByHeader(row, hdr, 'renewalnotes', -1),
+    contractRenewalCount: Number(getValueByHeader(row, hdr, 'contractrenewalcount', -1)) || 0,
     currentProject: getValueByHeader(row, hdr, 'currentproject', -1),
     mustChangePassword: String(getValueByHeader(row, hdr, 'mustchangepassword', -1) || '').toString().toUpperCase() === 'TRUE'
   };
@@ -1534,6 +1537,7 @@ function buildEmployeeDirectoryObject(emp) {
     contractStartDate: emp.contractStartDate || '',
     contractEndDate: emp.contractEndDate || '',
     contractTotalDays: emp.contractTotalDays || '',
+    contractRenewalCount: Number(emp.contractRenewalCount) || 0,
     noticePeriod: emp.noticePeriod || '',
     renewalNotes: emp.renewalNotes || ''
   };
@@ -1611,6 +1615,7 @@ function addEmployee(data) {
     if (hdr['contracttotaldays'] !== undefined) newRow[hdr['contracttotaldays']] = data.contractTotalDays || '';
     if (hdr['noticeperiod'] !== undefined) newRow[hdr['noticeperiod']] = data.noticePeriod || '';
     if (hdr['renewalnotes'] !== undefined) newRow[hdr['renewalnotes']] = data.renewalNotes || '';
+    if (hdr['contractrenewalcount'] !== undefined) newRow[hdr['contractrenewalcount']] = Number(data.contractRenewalCount) || 0;
     if (hdr['currentproject'] !== undefined) newRow[hdr['currentproject']] = data.currentProject || '';
     if (hdr['addedon'] !== undefined) newRow[hdr['addedon']] = now;
     sheet.appendRow(newRow);
@@ -1717,6 +1722,55 @@ function updateEmployee(data) {
   } catch (err) {
     Logger.log('Error in updateEmployee: ' + err.toString());
     return { success: false, message: 'Error updating employee: ' + err.toString() };
+  }
+}
+
+function renewEmployeeContract(data) {
+  try {
+    const email = normalizeEmail(data && data.email);
+    const startDate = String(data && data.contractStartDate || '').trim();
+    const endDate = String(data && data.contractEndDate || '').trim();
+    const duration = Math.floor(Number(data && data.contractTotalDays));
+    if (!email) return { success: false, message: 'Employee email is required.' };
+    if (!startDate || !endDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      return { success: false, message: 'Choose a valid contract start date and duration.' };
+    }
+    if (!Number.isFinite(duration) || duration < 1) return { success: false, message: 'Contract duration must be at least one day.' };
+
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    ensureEmployeeSchema(ss);
+    const sheet = ss.getSheetByName('Employees');
+    const hdr = getEmpHeaders(sheet);
+    const emailCol = hdr['email'];
+    const lastRow = sheet.getLastRow();
+    if (emailCol === undefined || lastRow < 2) return { success: false, message: 'Employee record was not found.' };
+    const emails = sheet.getRange(2, emailCol + 1, lastRow - 1, 1).getValues();
+    const index = emails.findIndex(row => normalizeEmail(row[0]) === email);
+    if (index < 0) return { success: false, message: 'Employee record was not found.' };
+
+    const row = index + 2;
+    const start = new Date(startDate + 'T00:00:00');
+    const end = new Date(endDate + 'T00:00:00');
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
+      return { success: false, message: 'Contract end date must be after the start date.' };
+    }
+    const actualDays = Math.round((end.getTime() - start.getTime()) / 86400000);
+    if (actualDays !== duration) return { success: false, message: 'The contract dates do not match the selected duration.' };
+
+    const countCol = hdr['contractrenewalcount'];
+    const previousCount = countCol === undefined ? 0 : (Number(sheet.getRange(row, countCol + 1).getValue()) || 0);
+    sheet.getRange(row, hdr['contractstartdate'] + 1).setValue(startDate);
+    sheet.getRange(row, hdr['contractenddate'] + 1).setValue(endDate);
+    sheet.getRange(row, hdr['contracttotaldays'] + 1).setValue(duration);
+    if (countCol !== undefined) sheet.getRange(row, countCol + 1).setValue(previousCount + 1);
+    if (data.renewalNotes !== undefined && hdr['renewalnotes'] !== undefined) {
+      setCellIfProvided(sheet, row, hdr, 'renewalnotes', String(data.renewalNotes || '').trim());
+    }
+    SpreadsheetApp.flush();
+    return { success: true, message: 'Contract renewed successfully.', contractRenewalCount: previousCount + 1 };
+  } catch (err) {
+    Logger.log('Error in renewEmployeeContract: ' + err.toString());
+    return { success: false, message: 'Could not renew contract: ' + err.toString() };
   }
 }
 

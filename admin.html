@@ -108,6 +108,12 @@
         .cdb-warn { background:rgba(245,158,11,.15); color:#d97706; border:1px solid rgba(245,158,11,.3) }
         .cdb-crit { background:rgba(239,68,68,.15); color:#dc2626; border:1px solid rgba(239,68,68,.3) }
         .cdb-exp  { background:rgba(100,100,100,.12); color:#6b7280; border:1px solid rgba(100,100,100,.2) }
+        #renewModal { align-items:center; padding:18px; }
+        #renewModal .renewal-modal { max-width:460px; width:100%; border-radius:22px; padding:24px; }
+        .renewal-employee-card { display:flex; align-items:center; gap:12px; padding:14px; border:1px solid var(--gb); border-radius:14px; background:var(--inp-bg); margin:12px 0 18px; }
+        .renewal-employee-card .av { width:44px; height:44px; font-size:1rem; }
+        .renewal-count-pill { margin-left:auto; text-align:center; padding:7px 10px; border-radius:12px; background:rgba(232,121,249,.12); color:var(--p); font-size:.72rem; font-weight:800; white-space:nowrap; }
+        .renewal-preview { padding:11px 13px; margin-top:12px; border-radius:12px; border:1px solid var(--gb); background:var(--glass); color:var(--muted); font-size:.82rem; }
         [data-theme="dark"] .cdb-safe { color:#10b981 }
         [data-theme="dark"] .cdb-warn { color:#f59e0b }
         [data-theme="dark"] .cdb-crit { color:#ef4444 }
@@ -1138,8 +1144,8 @@
                         </div>
                         <div class="tw">
                             <table>
-                                <thead><tr><th>Employee</th><th>Department</th><th>Type</th><th>Start</th><th>End</th><th>Duration</th><th>Days Left</th><th>Status</th><th>Actions</th></tr></thead>
-                                <tbody id="contractsBody"><tr><td colspan="9"><div class="empty"><div class="ei">⏳</div><h3>Loading...</h3></div></td></tr></tbody>
+                                <thead><tr><th>Employee</th><th>Department</th><th>Type</th><th>Start</th><th>End</th><th>Duration</th><th>Renewals</th><th>Days Left</th><th>Status</th><th>Actions</th></tr></thead>
+                                <tbody id="contractsBody"><tr><td colspan="10"><div class="empty"><div class="ei">⏳</div><h3>Loading...</h3></div></td></tr></tbody>
                             </table>
                         </div>
                     </div>
@@ -1274,6 +1280,26 @@
                     <div class="card"><div class="card-hdr"><div class="card-t">🏆 Top Attendees This Month</div></div><div id="topAtt"></div></div>
                 </div>
 
+            </div>
+        </div>
+    </div>
+
+    <div class="m-ov" id="renewModal" onclick="handleRenewModalBg(event)">
+        <div class="modal renewal-modal">
+            <div class="m-hdr">
+                <div class="m-t">Renew contract</div>
+                <button class="m-close" type="button" onclick="closeRenewalModal()" aria-label="Close">×</button>
+            </div>
+            <div id="renewEmployeeCard" class="renewal-employee-card"></div>
+            <div id="renewModalAlert"></div>
+            <div class="frow">
+                <div class="fgrp"><label class="flbl" for="renewStartDate">New contract start</label><input type="date" class="finp" id="renewStartDate" onchange="updateRenewalPreview()"/></div>
+                <div class="fgrp"><label class="flbl" for="renewEndDate">New contract end</label><input type="date" class="finp" id="renewEndDate" onchange="updateRenewalPreview()"/></div>
+            </div>
+            <div class="renewal-preview" id="renewalPreview">Choose a start date and duration to preview the new end date.</div>
+            <div style="display:flex;justify-content:flex-end;gap:9px;margin-top:18px;">
+                <button class="btn btn-ghost" type="button" onclick="closeRenewalModal()">Cancel</button>
+                <button class="btn btn-warn" type="button" id="renewSaveBtn" onclick="saveContractRenewal()">Renew contract</button>
             </div>
         </div>
     </div>
@@ -1584,7 +1610,7 @@
         };
 
         let allEmp=[],allEmpDirectory=[],allAtt=[],allLv=[],allManagers=[],allHRProfiles=[],projectList=[],allMissingLoginAlerts=[];
-        let editEmail=null,confCb=null,isLive=false,dataLoaded=false,projEditId=null,mgrProfileEditEmail=null,mgrProfileEditId=null,mgrProfileEditType=null,hrProfileEditUsername=null,pwdResetEmployee=null;
+        let editEmail=null,confCb=null,isLive=false,dataLoaded=false,projEditId=null,mgrProfileEditEmail=null,mgrProfileEditId=null,mgrProfileEditType=null,hrProfileEditUsername=null,pwdResetEmployee=null,renewalEmployeeEmail=null;
         let leaveMonitorDays=[],leaveMonitorSelectedDates=[];
         const msState={modal:new Set()};
         const LS={EMP:'atp_emp',ATT:'atp_att',LV:'atp_lv',PROJ:'atp_projects',MGR:'atp_managers',HR:'atp_hr_profiles',ABS:'atp_absences',ALERTS:'atp_missing_alerts'};
@@ -1596,7 +1622,7 @@
         const esc=s=>(s||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
         function stripEmployeeForDirectory(emp={}){
             const employmentType=emp.employmentType||emp.employeeType||emp.employment_type||'Permanent';
-            return {id:emp.id||'',email:emp.email||'',name:emp.name||'',role:emp.role||'',department:emp.department||'',employmentType,employeeType:employmentType,employment_type:employmentType,workMode:emp.workMode||'',status:emp.status||'Active',reportingManager:emp.reportingManager||'',reportingManagerEmail:emp.reportingManagerEmail||'',manager:emp.manager||'',managerEmail:emp.managerEmail||'',phone:emp.phone||'',joinDate:emp.joinDate||'',contractStartDate:emp.contractStartDate||'',contractEndDate:emp.contractEndDate||'',contractTotalDays:emp.contractTotalDays||'',noticePeriod:emp.noticePeriod||'',renewalNotes:emp.renewalNotes||''};
+            return {id:emp.id||'',email:emp.email||'',name:emp.name||'',role:emp.role||'',department:emp.department||'',employmentType,employeeType:employmentType,employment_type:employmentType,workMode:emp.workMode||'',status:emp.status||'Active',reportingManager:emp.reportingManager||'',reportingManagerEmail:emp.reportingManagerEmail||'',manager:emp.manager||'',managerEmail:emp.managerEmail||'',phone:emp.phone||'',joinDate:emp.joinDate||'',contractStartDate:emp.contractStartDate||'',contractEndDate:emp.contractEndDate||'',contractTotalDays:emp.contractTotalDays||'',contractRenewalCount:Number(emp.contractRenewalCount)||0,noticePeriod:emp.noticePeriod||'',renewalNotes:emp.renewalNotes||''};
         }
         const escHtml=s=>(s||'').toString().replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
@@ -2483,6 +2509,39 @@
         function calcContractDays(){const s=document.getElementById('mContractStart').value,e=document.getElementById('mContractEnd').value;const infoEl=document.getElementById('contractCalcInfo');if(s&&e){const total=calcTotalDays(s,e),left=calcDaysLeft(e);if(total&&total>0){document.getElementById('mContractDays').value=total;infoEl.style.display='block';infoEl.textContent=`📅 Total: ${total} days | Remaining: ${left!==null?(left>=0?left:'Expired '+Math.abs(left)+'d ago'):'N/A'}`}}}
         function onContractDaysInput(){const days=parseInt(document.getElementById('mContractDays').value),start=document.getElementById('mContractStart').value;const infoEl=document.getElementById('contractCalcInfo');if(days>0&&start){const endDate=new Date(start);endDate.setDate(endDate.getDate()+days);const endStr=endDate.toISOString().split('T')[0];document.getElementById('mContractEnd').value=endStr;const left=calcDaysLeft(endStr);infoEl.style.display='block';infoEl.textContent=`📅 End: ${fmtDate(endStr)} | Remaining: ${left!==null?(left>=0?left:'Expired '+Math.abs(left)+'d ago'):'N/A'}`}}
 
+        function localDateValue(date){const d=new Date(date);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+        function getRenewalDurationDays(startValue,endValue){if(!startValue||!endValue)return 0;const start=new Date(`${startValue}T00:00:00`),end=new Date(`${endValue}T00:00:00`);if(Number.isNaN(start.getTime())||Number.isNaN(end.getTime()))return 0;return Math.round((end-start)/86400000)}
+        function openRenewalModal(email){
+            const emp=allEmp.find(item=>(item.email||'').toLowerCase()===(email||'').toLowerCase());if(!emp)return;
+            renewalEmployeeEmail=emp.email;
+            const count=Number(emp.contractRenewalCount)||0;
+            document.getElementById('renewEmployeeCard').innerHTML=`<div class="av">${ini(emp.name)}</div><div style="min-width:0;flex:1"><strong>${esc(emp.name||'Employee')}</strong><div style="font-size:.76rem;color:var(--muted);margin-top:3px;overflow-wrap:anywhere">${esc(emp.department||'')} · ${esc(emp.employmentType||'Contract')}</div><div style="font-size:.72rem;color:var(--muted);margin-top:2px">${esc(emp.email||'')}</div><div style="font-size:.72rem;color:var(--muted);margin-top:2px">Current end: ${emp.contractEndDate?fmtDate(emp.contractEndDate):'Not set'}</div></div><div class="renewal-count-pill">${count} ${count===1?'renewal':'renewals'}</div>`;
+            const today=localDateValue(new Date());let defaultStart=today;
+            if(emp.contractEndDate){const nextDay=new Date(`${emp.contractEndDate}T00:00:00`);if(!Number.isNaN(nextDay.getTime())){nextDay.setDate(nextDay.getDate()+1);const afterEnd=localDateValue(nextDay);if(afterEnd>today)defaultStart=afterEnd}}
+            document.getElementById('renewStartDate').value=defaultStart;
+            document.getElementById('renewEndDate').value='';
+            document.getElementById('renewModalAlert').innerHTML='';
+            document.getElementById('renewalPreview').textContent='Choose a duration to preview the new contract end date.';
+            document.getElementById('renewSaveBtn').disabled=false;
+            document.getElementById('renewModal').classList.add('on');document.body.style.overflow='hidden';
+        }
+        function updateRenewalPreview(){const start=document.getElementById('renewStartDate').value,end=document.getElementById('renewEndDate').value,duration=getRenewalDurationDays(start,end);document.getElementById('renewalPreview').textContent=duration>0?`New contract: ${fmtDate(start)} → ${fmtDate(end)} (${duration} days)`:'Choose an end date after the start date to preview the contract duration.'}
+        function closeRenewalModal(){document.getElementById('renewModal').classList.remove('on');document.body.style.overflow='';renewalEmployeeEmail=null}
+        function handleRenewModalBg(event){if(event.target===document.getElementById('renewModal'))closeRenewalModal()}
+        async function saveContractRenewal(){
+            const start=document.getElementById('renewStartDate').value,end=document.getElementById('renewEndDate').value,duration=getRenewalDurationDays(start,end),btn=document.getElementById('renewSaveBtn');
+            if(!renewalEmployeeEmail||!start||!end||duration<1){document.getElementById('renewModalAlert').innerHTML='<div class="alert al-err">Enter an end date after the start date.</div>';return}
+            btn.disabled=true;btn.textContent='Saving…';document.getElementById('renewModalAlert').innerHTML='';
+            const result=await callAPI('renewEmployeeContract',{email:renewalEmployeeEmail,contractStartDate:start,contractEndDate:end,contractTotalDays:duration});
+            btn.disabled=false;btn.textContent='Renew contract';
+            if(!result.success){document.getElementById('renewModalAlert').innerHTML=`<div class="alert al-err">${esc(result.message||'Could not renew this contract.')}</div>`;return}
+            const emp=allEmp.find(item=>(item.email||'').toLowerCase()===renewalEmployeeEmail.toLowerCase());
+            if(emp){emp.contractStartDate=start;emp.contractEndDate=end;emp.contractTotalDays=duration;emp.contractRenewalCount=Number(result.contractRenewalCount)||((Number(emp.contractRenewalCount)||0)+1)}
+            CACHE.clear('getEmployees');CACHE.clear('getEmployeesDirectory');CACHE.clear('getEmployeeById');
+            closeRenewalModal();buildContractsPanel();
+            toast('Contract renewed',`${emp?.name||'Employee'} — renewal #${emp?.contractRenewalCount||result.contractRenewalCount}`,'ok');
+        }
+
         function buildContractsPanel(){
             let expiring30=0,expired=0,active=0,permanent=0;
             allEmp.forEach(e=>{const type=e.employmentType||'Permanent';if(type==='Permanent'){permanent++;return}const cs=getContractStatus(e);if(cs.status==='expired')expired++;else if(cs.status==='critical'||cs.status==='warning')expiring30++;else if(cs.status==='active')active++;});
@@ -2491,7 +2550,7 @@
             const expSoon=allEmp.filter(e=>{const cs=getContractStatus(e);return cs.status==='critical'||cs.status==='warning'||cs.status==='expired'});
             if(el('stExpiring'))el('stExpiring').textContent=expSoon.length;
             const dc=document.getElementById('dashContracts');
-            if(dc){if(!expSoon.length){dc.innerHTML=`<div class="empty"><div class="ei">🎉</div><h3>No contracts expiring soon</h3></div>`}else{dc.innerHTML=`<div>${expSoon.slice(0,6).map(e=>{const cs=getContractStatus(e);return`<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--gb);"><div class="av">${ini(e.name)}</div><div style="flex:1;min-width:0;"><strong style="font-size:.85rem;color:var(--txt);">${e.name}</strong><div style="font-size:.72rem;color:var(--muted);">${e.department||''} • ${e.employmentType}</div></div>${getContractDaysBadge(e)}<button class="btn btn-warn btn-xs" onclick="editEmp('${esc(e.email)}')" style="margin-left:6px;">Renew</button></div>`;}).join('')}</div>`}}
+            if(dc){if(!expSoon.length){dc.innerHTML=`<div class="empty"><div class="ei">🎉</div><h3>No contracts expiring soon</h3></div>`}else{dc.innerHTML=`<div>${expSoon.slice(0,6).map(e=>{const cs=getContractStatus(e);return`<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--gb);"><div class="av">${ini(e.name)}</div><div style="flex:1;min-width:0;"><strong style="font-size:.85rem;color:var(--txt);">${e.name}</strong><div style="font-size:.72rem;color:var(--muted);">${e.department||''} • ${e.employmentType}</div></div>${getContractDaysBadge(e)}<span class="renewal-count-pill">${Number(e.contractRenewalCount)||0} renewals</span><button class="btn btn-warn btn-xs" onclick="openRenewalModal('${esc(e.email)}')" style="margin-left:6px;">Renew</button></div>`;}).join('')}</div>`}}
             renderContracts();
         }
 
@@ -2499,7 +2558,7 @@
             const tb=document.getElementById('contractsBody');if(!tb)return;
             if(!data.length){tb.innerHTML=`<tr><td colspan="9"><div class="empty"><div class="ei">👥</div><h3>No employees</h3></div></td></tr>`;return}
             tb.innerHTML=data.map(e=>{const type=e.employmentType||'Permanent',cs=getContractStatus(e);const totalDays=e.contractTotalDays||(e.contractStartDate&&e.contractEndDate?calcTotalDays(e.contractStartDate,e.contractEndDate):null);const pct=totalDays&&cs.days!==undefined&&cs.days>=0?Math.max(0,Math.min(100,Math.round(((totalDays-cs.days)/totalDays)*100))):null;
-                return`<tr><td><div style="display:flex;align-items:center;gap:8px;"><div class="av">${ini(e.name)}</div><div><strong style="font-size:.85rem;">${e.name}</strong><div style="font-size:.7rem;color:var(--muted);">${e.email}</div></div></div></td><td><span class="badge bd-info">${e.department||'N/A'}</span></td><td>${getEmpTypeBadge(type)}</td><td style="font-size:.8rem;">${e.contractStartDate?fmtDate(e.contractStartDate):'—'}</td><td style="font-size:.8rem;">${e.contractEndDate?fmtDate(e.contractEndDate):(type==='Permanent'?'No End':'—')}</td><td style="font-size:.8rem;">${totalDays?`${totalDays}d`:(type==='Permanent'?'♾️':'—')}</td><td>${getContractDaysBadge(e)}${pct!==null?`<div class="prog-bar" style="margin-top:4px;height:4px;"><div class="prog-fill" style="width:${pct}%;background:${cs.status==='critical'?'var(--err)':cs.status==='warning'?'var(--warn)':'var(--ok)'}"></div></div>`:''}</td><td>${cs.status==='permanent'?`<span class="badge bd-info">Permanent</span>`:cs.status==='expired'?`<span class="badge bd-err">Expired</span>`:cs.status==='critical'?`<span class="badge bd-err">Critical</span>`:cs.status==='warning'?`<span class="badge bd-pend">Expiring</span>`:`<span class="badge bd-ok">Active</span>`}</td><td><button class="btn-ico btn-warn" onclick="editEmp('${esc(e.email)}')" title="Edit">✏️</button></td></tr>`;
+                return`<tr><td><div style="display:flex;align-items:center;gap:8px;"><div class="av">${ini(e.name)}</div><div><strong style="font-size:.85rem;">${e.name}</strong><div style="font-size:.7rem;color:var(--muted);">${e.email}</div></div></div></td><td><span class="badge bd-info">${e.department||'N/A'}</span></td><td>${getEmpTypeBadge(type)}</td><td style="font-size:.8rem;">${e.contractStartDate?fmtDate(e.contractStartDate):'—'}</td><td style="font-size:.8rem;">${e.contractEndDate?fmtDate(e.contractEndDate):(type==='Permanent'?'No End':'—')}</td><td style="font-size:.8rem;">${totalDays?`${totalDays}d`:(type==='Permanent'?'♾️':'—')}</td><td>${getContractDaysBadge(e)}${pct!==null?`<div class="prog-bar" style="margin-top:4px;height:4px;"><div class="prog-fill" style="width:${pct}%;background:${cs.status==='critical'?'var(--err)':cs.status==='warning'?'var(--warn)':'var(--ok)'}"></div></div>`:''}</td><td><span class="renewal-count-pill">${Number(e.contractRenewalCount)||0}</span></td><td>${cs.status==='permanent'?`<span class="badge bd-info">Permanent</span>`:cs.status==='expired'?`<span class="badge bd-err">Expired</span>`:cs.status==='critical'?`<span class="badge bd-err">Critical</span>`:cs.status==='warning'?`<span class="badge bd-pend">Expiring</span>`:`<span class="badge bd-ok">Active</span>`}</td><td><button class="btn-ico btn-warn" onclick="editEmp('${esc(e.email)}')" title="Edit">✏️</button></td></tr>`;
             }).join('');
         }
 
